@@ -40,6 +40,7 @@ import (
 	"k8s.io/kubernetes/plugin/pkg/admission/noderestriction"
 	"k8s.io/kubernetes/plugin/pkg/admission/podnodeselector"
 	"k8s.io/kubernetes/plugin/pkg/admission/podpreset"
+	"k8s.io/kubernetes/plugin/pkg/admission/podready"
 	"k8s.io/kubernetes/plugin/pkg/admission/podtolerationrestriction"
 	podpriority "k8s.io/kubernetes/plugin/pkg/admission/priority"
 	"k8s.io/kubernetes/plugin/pkg/admission/resourcequota"
@@ -76,6 +77,7 @@ var AllOrderedPlugins = []string{
 	podsecuritypolicy.PluginName,            // PodSecurityPolicy
 	podnodeselector.PluginName,              // PodNodeSelector
 	podpriority.PluginName,                  // Priority
+	podready.PluginName,                     // PodReady
 	defaulttolerationseconds.PluginName,     // DefaultTolerationSeconds
 	podtolerationrestriction.PluginName,     // PodTolerationRestriction
 	exec.DenyEscalatingExec,                 // DenyEscalatingExec
@@ -118,6 +120,7 @@ func RegisterAllAdmissionPlugins(plugins *admission.Plugins) {
 	resourcequota.Register(plugins)
 	podsecuritypolicy.Register(plugins)
 	podpriority.Register(plugins)
+	podready.Register(plugins)
 	scdeny.Register(plugins)
 	serviceaccount.Register(plugins)
 	setdefault.Register(plugins)
