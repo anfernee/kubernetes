@@ -54,6 +54,13 @@ import (
 	utilnet "k8s.io/utils/net"
 )
 
+const (
+	// gceEndpointGatewayName is the HNS endpoint name created in GCE to act as
+	// gateway endpoint.
+	// Refer to: cluster/gce/windows/k8s-node-setup.psm1
+	gceEndpointGatewayName = "cbr0"
+)
+
 // KernelCompatTester tests whether the required kernel capabilities are
 // present to run the windows kernel proxier.
 type KernelCompatTester interface {
@@ -88,8 +95,9 @@ type externalIPInfo struct {
 }
 
 type loadBalancerIngressInfo struct {
-	ip    string
-	hnsID string
+	ip               string
+	hnsID            string
+	healthCheckHnsID string
 }
 
 type loadBalancerInfo struct {
@@ -728,6 +736,10 @@ func (svcInfo *serviceInfo) deleteAllHnsLoadBalancerPolicy() {
 	for _, lbIngressIP := range svcInfo.loadBalancerIngressIPs {
 		hns.deleteLoadBalancer(lbIngressIP.hnsID)
 		lbIngressIP.hnsID = ""
+		if lbIngressIP.healthCheckHnsID != "" {
+			hns.deleteLoadBalancer(lbIngressIP.healthCheckHnsID)
+			lbIngressIP.healthCheckHnsID = ""
+		}
 	}
 }
 
@@ -954,6 +966,7 @@ func (proxier *Proxier) syncProxyRules() {
 
 	hnsNetworkName := proxier.network.name
 	hns := proxier.hns
+	gceGatewayEndpoint, _ := hns.getEndpointByName(gceEndpointGatewayName)
 
 	prevNetworkID := proxier.network.id
 	updatedNetwork, err := hns.getNetworkByName(hnsNetworkName)
@@ -1270,6 +1283,24 @@ func (proxier *Proxier) syncProxyRules() {
 			}
 			lbIngressIP.hnsID = hnsLoadBalancer.hnsID
 			klog.V(3).InfoS("Hns LoadBalancer resource created for loadBalancer Ingress resources", "lbIngressIP", lbIngressIP)
+
+			if gceGatewayEndpoint != nil {
+				hnsHealthCheckLoadBalancer, err := hns.getLoadBalancer(
+					[]endpointsInfo{*gceGatewayEndpoint},
+					loadBalancerFlags{isDSR: svcInfo.preserveDIP || proxier.isDSR, useMUX: svcInfo.preserveDIP, preserveDIP: svcInfo.preserveDIP},
+					sourceVip,
+					lbIngressIP.ip,
+					Enum(svcInfo.Protocol()),
+					uint16(svcInfo.HealthCheckNodePort()),
+					uint16(svcInfo.HealthCheckNodePort()),
+				)
+				if err != nil {
+					klog.Errorf("Policy creation failed: %v", err)
+					continue
+				}
+				lbIngressIP.healthCheckHnsID = hnsHealthCheckLoadBalancer.hnsID
+				klog.V(3).Infof("Hns Health Check LoadBalancer resource created for loadBalancer Ingress resources %v", lbIngressIP)
+			}
 		}
 		svcInfo.policyApplied = true
 		Log(svcInfo, "+++Policy Successfully applied for service +++", 2)
